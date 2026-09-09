@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from "react";
-import Header from "./component/Header";
-import CategoryFilters from "./component/CategoryFilters";
-import ProductGrid from "./component/ProductGrid";
-import ProductModal from "./component/ProductModal";
+import Header from "@/components/Header";
+import CategoryFilters from "@/components/CategoryFilters";
+import ProductGrid from "@/components/ProductGrid";
+import ProductModal from "@/components/ProductModal";
 
 export default function Home() {
   const [products, setProducts] = useState([]);
@@ -18,10 +18,31 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
 
+  // Load products: Check localStorage first, otherwise fetch from API
   const loadProducts = async (query = "", category = "All") => {
     setLoading(true);
     setError(null);
+
     try {
+      const localData = localStorage.getItem("dukaan_products");
+      
+      // If we already have stored data and no active search query, use local storage
+      if (localData && !query) {
+        let parsedProducts = JSON.parse(localData);
+        
+        if (category && category !== "All") {
+          parsedProducts = parsedProducts.filter(
+            (p) => p.category.toLowerCase() === category.toLowerCase()
+          );
+        }
+        
+        setProducts(parsedProducts);
+        updateCategories(JSON.parse(localData));
+        setLoading(false);
+        return;
+      }
+
+      // Fetch from API if no local data exists or user is searching
       const params = new URLSearchParams();
       if (query) params.append("query", query);
       if (category && category !== "All") params.append("category", category);
@@ -31,17 +52,25 @@ export default function Home() {
 
       const data = await res.json();
       const productList = data.products || [];
+
       setProducts(productList);
 
-      if (categories.length === 1 && productList.length > 0) {
-        const unique = ["All", ...new Set(productList.map((p) => p.category))];
-        setCategories(unique);
+      // Save initial API batch to localStorage if empty
+      if (!localData && !query && category === "All") {
+        localStorage.setItem("dukaan_products", JSON.stringify(productList));
       }
+
+      updateCategories(productList);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const updateCategories = (items) => {
+    const unique = ["All", ...new Set(items.map((p) => p.category))];
+    setCategories(unique);
   };
 
   useEffect(() => {
@@ -58,8 +87,11 @@ export default function Home() {
     loadProducts("", "All");
   };
 
+  // Add / Edit with localStorage synchronization
   const handleCreateOrUpdate = async (formData) => {
     try {
+      let updatedList = [];
+
       if (editingProduct) {
         const res = await fetch(`/api/products/${editingProduct.id}`, {
           method: "PUT",
@@ -67,8 +99,9 @@ export default function Home() {
           body: JSON.stringify(formData),
         });
         const updated = await res.json();
-        setProducts((prev) =>
-          prev.map((item) => (item.id === editingProduct.id ? { ...item, ...updated } : item))
+
+        updatedList = products.map((item) =>
+          item.id === editingProduct.id ? { ...item, ...updated } : item
         );
       } else {
         const res = await fetch("/api/products", {
@@ -77,8 +110,16 @@ export default function Home() {
           body: JSON.stringify(formData),
         });
         const created = await res.json();
-        setProducts((prev) => [created, ...prev]);
+
+        // Assign a unique local ID if API returns duplicate ID
+        const newProduct = { ...created, id: Date.now() };
+        updatedList = [newProduct, ...products];
       }
+
+      setProducts(updatedList);
+      localStorage.setItem("dukaan_products", JSON.stringify(updatedList));
+      updateCategories(updatedList);
+
       setIsModalOpen(false);
       setEditingProduct(null);
     } catch (err) {
@@ -86,14 +127,17 @@ export default function Home() {
     }
   };
 
+  // Delete with localStorage synchronization
   const handleDelete = async (id) => {
     if (!window.confirm("Are you sure you want to delete this product?")) return;
 
     try {
-      const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete product");
+      await fetch(`/api/products/${id}`, { method: "DELETE" });
 
-      setProducts((prev) => prev.filter((item) => item.id !== id));
+      const updatedList = products.filter((item) => item.id !== id);
+      setProducts(updatedList);
+      localStorage.setItem("dukaan_products", JSON.stringify(updatedList));
+      updateCategories(updatedList);
     } catch (err) {
       alert("Delete failed: " + err.message);
     }
