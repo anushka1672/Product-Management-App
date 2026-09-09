@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from "react";
-import Header from "@/components/Header";
-import CategoryFilters from "@/components/CategoryFilters";
-import ProductGrid from "@/components/ProductGrid";
-import ProductModal from "@/components/ProductModal";
+import Header from "./component/Header";
+import CategoryFilters from "./component/CategoryFilters";
+import ProductGrid from "./component/ProductGrid";
+import ProductModal from "./component/ProductModal";
 
 export default function Home() {
   const [products, setProducts] = useState([]);
